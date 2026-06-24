@@ -1,55 +1,61 @@
-import { useEffect } from "react";
-import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
-import { HOME } from "@/constants/testIds";
+import React from 'react';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import Navbar from './components/Navbar';
+import Home from './pages/Home';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import AuthCallback from './pages/AuthCallback';
+import AnimeDetail from './pages/AnimeDetail';
+import VideoPlayer from './pages/VideoPlayer';
+import Profile from './pages/Profile';
+import Search from './pages/Search';
+import Watchlist from './pages/Watchlist';
+import Favorites from './pages/Favorites';
+import Pricing from './pages/Pricing';
+import Admin from './pages/Admin';
+import './App.css';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+function AppRouter() {
+  const location = useLocation();
 
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
+  // Handle OAuth callback synchronously during render
+  if (location.hash?.includes('session_id=')) {
+    return <AuthCallback />;
+  }
 
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
+  // Hide navbar on auth pages
+  const hideNavbar = ['/login', '/register'].includes(location.pathname);
 
   return (
-    <div>
-      <header className="App-header">
-        <a
-          data-testid={HOME.emergentLink}
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
+    <div className="App min-h-screen bg-gray-900 text-white">
+      {!hideNavbar && <Navbar />}
+      <div className={hideNavbar ? '' : 'pt-16'}>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/anime/:id" element={<AnimeDetail />} />
+          <Route path="/watch/:episodeId" element={<VideoPlayer />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/search" element={<Search />} />
+          <Route path="/watchlist" element={<Watchlist />} />
+          <Route path="/favorites" element={<Favorites />} />
+          <Route path="/pricing" element={<Pricing />} />
+          <Route path="/admin" element={<Admin />} />
+        </Routes>
+      </div>
     </div>
   );
-};
+}
 
 function App() {
   return (
-    <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </div>
+    <BrowserRouter>
+      <AuthProvider>
+        <AppRouter />
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 
