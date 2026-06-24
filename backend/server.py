@@ -20,6 +20,8 @@ import jwt
 import requests
 import secrets
 import httpx
+import boto3
+from botocore.client import Config as BotoConfig
 from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionResponse, CheckoutStatusResponse, CheckoutSessionRequest
 
 # ============== CONFIGURATION ==============
@@ -39,6 +41,28 @@ FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
 APP_NAME = "anime-stream"
 storage_key = None
+
+# Cloudflare R2 Configuration
+R2_ACCOUNT_ID = os.environ.get('R2_ACCOUNT_ID')
+R2_ACCESS_KEY_ID = os.environ.get('R2_ACCESS_KEY_ID')
+R2_SECRET_ACCESS_KEY = os.environ.get('R2_SECRET_ACCESS_KEY')
+R2_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME')
+R2_ENDPOINT = f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com" if R2_ACCOUNT_ID else None
+
+# Initialize R2 client
+r2_client = None
+if R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY:
+    try:
+        r2_client = boto3.client(
+            's3',
+            endpoint_url=R2_ENDPOINT,
+            aws_access_key_id=R2_ACCESS_KEY_ID,
+            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+            config=BotoConfig(signature_version='s3v4'),
+            region_name='auto'
+        )
+    except Exception as e:
+        print(f"R2 client init failed: {e}")
 
 # Subscription packages
 SUBSCRIPTION_PACKAGES = {
@@ -103,6 +127,63 @@ def get_object(path: str) -> tuple[bytes, str]:
     )
     resp.raise_for_status()
     return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+
+# ============== CLOUDFLARE R2 FUNCTIONS ==============
+def upload_to_r2(file_data: bytes, key: str, content_type: str) -> str:
+    """Upload file to Cloudflare R2"""
+    if not r2_client:
+        raise HTTPException(status_code=500, detail="R2 not configured")
+    try:
+        r2_client.put_object(
+            Bucket=R2_BUCKET_NAME,
+            Key=key,
+            Body=file_data,
+            ContentType=content_type
+        )
+        # Return public URL via our backend file serve endpoint
+        return f"/api/r2/{key}"
+    except Exception as e:
+        logger.error(f"R2 upload error: {e}")
+        raise HTTPException(status_code=500, detail=f"R2 upload failed: {str(e)}")
+
+def get_from_r2(key: str) -> tuple[bytes, str]:
+    """Get file from Cloudflare R2"""
+    if not r2_client:
+        raise HTTPException(status_code=500, detail="R2 not configured")
+    try:
+        response = r2_client.get_object(Bucket=R2_BUCKET_NAME, Key=key)
+        data = response['Body'].read()
+        content_type = response.get('ContentType', 'application/octet-stream')
+        return data, content_type
+    except Exception as e:
+        logger.error(f"R2 download error: {e}")
+        raise HTTPException(status_code=404, detail="File not found")
+
+def delete_from_r2(key: str) -> bool:
+    """Delete file from Cloudflare R2"""
+    if not r2_client:
+        return False
+    try:
+        r2_client.delete_object(Bucket=R2_BUCKET_NAME, Key=key)
+        return True
+    except Exception as e:
+        logger.error(f"R2 delete error: {e}")
+        return False
+
+def generate_r2_presigned_url(key: str, expires_in: int = 3600) -> str:
+    """Generate presigned URL for R2 object (for direct video streaming)"""
+    if not r2_client:
+        return None
+    try:
+        url = r2_client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': R2_BUCKET_NAME, 'Key': key},
+            ExpiresIn=expires_in
+        )
+        return url
+    except Exception as e:
+        logger.error(f"R2 presigned URL error: {e}")
+        return None
 
 # ============== PASSWORD HASHING ==============
 def hash_password(password: str) -> str:
@@ -857,7 +938,7 @@ async def create_episode(episode_data: EpisodeCreate, request: Request):
 
 @api_router.post("/episodes/{episode_id}/upload-video", dependencies=[Depends(get_current_admin)])
 async def upload_video(episode_id: str, file: UploadFile = File(...), request: Request = None):
-    """Upload video for episode (admin only)"""
+    """Upload video for episode to Cloudflare R2 (admin only)"""
     episode = await db.episodes.find_one({"id": episode_id}, {"_id": 0})
     if not episode:
         raise HTTPException(status_code=404, detail="Episode not found")
@@ -866,25 +947,43 @@ async def upload_video(episode_id: str, file: UploadFile = File(...), request: R
     if not file.content_type.startswith("video/"):
         raise HTTPException(status_code=400, detail="File must be a video")
     
-    # Upload to storage
+    # Upload to Cloudflare R2
     ext = file.filename.split(".")[-1] if "." in file.filename else "mp4"
-    path = f"{APP_NAME}/videos/{episode['anime_id']}/{episode_id}.{ext}"
+    r2_key = f"videos/{episode['anime_id']}/{episode_id}.{ext}"
     
     data = await file.read()
-    result = put_object(path, data, file.content_type)
+    
+    # Try R2 first, fallback to Emergent storage
+    if r2_client:
+        try:
+            r2_client.put_object(
+                Bucket=R2_BUCKET_NAME,
+                Key=r2_key,
+                Body=data,
+                ContentType=file.content_type
+            )
+            video_url = f"/api/r2/{r2_key}"
+        except Exception as e:
+            logger.error(f"R2 upload failed, falling back to Emergent: {e}")
+            path = f"{APP_NAME}/videos/{episode['anime_id']}/{episode_id}.{ext}"
+            result = put_object(path, data, file.content_type)
+            video_url = f"/api/files/{result['path']}"
+    else:
+        path = f"{APP_NAME}/videos/{episode['anime_id']}/{episode_id}.{ext}"
+        result = put_object(path, data, file.content_type)
+        video_url = f"/api/files/{result['path']}"
     
     # Update episode
-    video_url = f"/api/files/{result['path']}"
     await db.episodes.update_one(
         {"id": episode_id},
-        {"$set": {"video_url": video_url}}
+        {"$set": {"video_url": video_url, "r2_key": r2_key if r2_client else None}}
     )
     
     return {"message": "Video uploaded successfully", "video_url": video_url}
 
 @api_router.post("/episodes/{episode_id}/upload-thumbnail", dependencies=[Depends(get_current_admin)])
 async def upload_thumbnail(episode_id: str, file: UploadFile = File(...), request: Request = None):
-    """Upload thumbnail for episode (admin only)"""
+    """Upload thumbnail for episode to Cloudflare R2 (admin only)"""
     episode = await db.episodes.find_one({"id": episode_id}, {"_id": 0})
     if not episode:
         raise HTTPException(status_code=404, detail="Episode not found")
@@ -893,15 +992,33 @@ async def upload_thumbnail(episode_id: str, file: UploadFile = File(...), reques
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
     
-    # Upload to storage
+    # Upload to Cloudflare R2
     ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
-    path = f"{APP_NAME}/thumbnails/{episode['anime_id']}/{episode_id}.{ext}"
+    r2_key = f"thumbnails/{episode['anime_id']}/{episode_id}.{ext}"
     
     data = await file.read()
-    result = put_object(path, data, file.content_type)
+    
+    # Try R2 first, fallback to Emergent storage
+    if r2_client:
+        try:
+            r2_client.put_object(
+                Bucket=R2_BUCKET_NAME,
+                Key=r2_key,
+                Body=data,
+                ContentType=file.content_type
+            )
+            thumbnail_url = f"/api/r2/{r2_key}"
+        except Exception as e:
+            logger.error(f"R2 upload failed, falling back to Emergent: {e}")
+            path = f"{APP_NAME}/thumbnails/{episode['anime_id']}/{episode_id}.{ext}"
+            result = put_object(path, data, file.content_type)
+            thumbnail_url = f"/api/files/{result['path']}"
+    else:
+        path = f"{APP_NAME}/thumbnails/{episode['anime_id']}/{episode_id}.{ext}"
+        result = put_object(path, data, file.content_type)
+        thumbnail_url = f"/api/files/{result['path']}"
     
     # Update episode
-    thumbnail_url = f"/api/files/{result['path']}"
     await db.episodes.update_one(
         {"id": episode_id},
         {"$set": {"thumbnail": thumbnail_url}}
@@ -918,12 +1035,34 @@ async def delete_episode(episode_id: str, request: Request):
 # ============== FILE SERVE ENDPOINT ==============
 @api_router.get("/files/{path:path}")
 async def serve_file(path: str):
-    """Serve file from storage"""
+    """Serve file from Emergent storage"""
     try:
         data, content_type = get_object(path)
         return Response(content=data, media_type=content_type)
     except Exception as e:
         logger.error(f"File serve error: {e}")
+        raise HTTPException(status_code=404, detail="File not found")
+
+@api_router.get("/r2/{path:path}")
+async def serve_r2_file(path: str):
+    """Serve file from Cloudflare R2 with streaming support"""
+    if not r2_client:
+        raise HTTPException(status_code=500, detail="R2 not configured")
+    try:
+        # For videos, generate presigned URL and redirect for better performance
+        if path.startswith("videos/"):
+            presigned_url = generate_r2_presigned_url(path, expires_in=3600)
+            if presigned_url:
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(url=presigned_url, status_code=302)
+        
+        # For images and others, serve directly
+        data, content_type = get_from_r2(path)
+        return Response(content=data, media_type=content_type)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"R2 file serve error: {e}")
         raise HTTPException(status_code=404, detail="File not found")
 
 # ============== COMMENT ENDPOINTS ==============
