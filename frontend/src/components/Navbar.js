@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useSiteSettings } from '../context/SiteSettingsContext';
 import { Search, User, LogOut, Heart, List, Settings, Home } from 'lucide-react';
 
 const Navbar = () => {
   const { user, logout } = useAuth();
+  const { settings, getImageUrl } = useSiteSettings();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -21,14 +23,20 @@ const Navbar = () => {
     navigate('/');
   };
 
+  const siteName = settings?.site_name || 'AnimeStream';
+  const logoUrl = settings?.logo_url ? getImageUrl(settings.logo_url) : null;
+
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-gray-900/80 backdrop-blur-xl border-b border-orange-500/20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2" data-testid="navbar-logo">
+            {logoUrl && (
+              <img src={logoUrl} alt={siteName} className="h-10 w-10 object-contain" />
+            )}
             <div className="text-3xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
-              AnimeStream
+              {siteName}
             </div>
           </Link>
 
