@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getWatchHistory } from '../lib/api';
 import { Mail, Calendar, Clock } from 'lucide-react';
+import PageWrapper from '../components/PageWrapper';
 
 const Profile = () => {
   const { user, loading } = useAuth();
@@ -35,6 +36,7 @@ const Profile = () => {
   }
 
   return (
+    <PageWrapper pageName="profile">
     <div className="min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-gradient-to-r from-orange-500/20 to-red-500/20 backdrop-blur rounded-2xl p-8 mb-8">
@@ -119,6 +121,7 @@ const Profile = () => {
         </section>
       </div>
     </div>
+    </PageWrapper>
   );
 };
 

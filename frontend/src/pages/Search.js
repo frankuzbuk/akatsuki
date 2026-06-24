@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { getAnimeList } from '../lib/api';
 import { Play, Star, Filter } from 'lucide-react';
+import PageWrapper from '../components/PageWrapper';
 
 const GENRES = [
   'Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy', 'Horror', 'Mystery',
@@ -52,6 +53,7 @@ const Search = () => {
   };
 
   return (
+    <PageWrapper pageName="search">
     <div className="min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
@@ -171,6 +173,7 @@ const Search = () => {
         )}
       </div>
     </div>
+    </PageWrapper>
   );
 };
 

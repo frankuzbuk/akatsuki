@@ -195,4 +195,38 @@ export const getPaymentStatus = async (sessionId) => {
   return response.data;
 };
 
+// Site Settings APIs
+export const getSiteSettings = async () => {
+  const response = await api.get('/settings');
+  return response.data;
+};
+
+export const updateSiteSettings = async (data) => {
+  const response = await api.put('/admin/settings', data);
+  return response.data;
+};
+
+export const uploadBgImage = async (page, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post(`/admin/settings/upload-bg-image?page=${page}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return response.data;
+};
+
+export const uploadLogo = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post('/admin/settings/upload-logo', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return response.data;
+};
+
+export const removeBgImage = async (page) => {
+  const response = await api.delete(`/admin/settings/bg-image/${page}`);
+  return response.data;
+};
+
 export default api;

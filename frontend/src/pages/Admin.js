@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useSiteSettings } from '../context/SiteSettingsContext';
 import {
   getAnalytics,
   getUsers,
@@ -14,9 +15,14 @@ import {
   getAnimeList,
   getAnimeEpisodes,
   deleteAnime,
-  deleteEpisode
+  deleteEpisode,
+  updateSiteSettings,
+  uploadBgImage,
+  uploadLogo,
+  removeBgImage
 } from '../lib/api';
-import { Users, Film, Video, BarChart3, Plus, UserPlus, Ban, Upload, Trash2 } from 'lucide-react';
+import { Users, Film, Video, BarChart3, Plus, UserPlus, Ban, Upload, Trash2, Palette, Image as ImageIcon } from 'lucide-react';
+import PageWrapper from '../components/PageWrapper';
 
 const Admin = () => {
   const { user, loading: authLoading } = useAuth();
@@ -68,9 +74,10 @@ const Admin = () => {
   }
 
   return (
-    <div className="min-h-screen">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-3xl font-bold mb-8">Admin Dashboard</h1>
+    <PageWrapper pageName="admin">
+      <div className="min-h-screen">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <h1 className="text-3xl font-bold mb-8">Admin Dashboard</h1>
 
         {/* Tabs */}
         <div className="flex flex-wrap gap-2 mb-8 border-b border-gray-700">
@@ -116,6 +123,14 @@ const Admin = () => {
               Admins
             </button>
           )}
+          <button
+            onClick={() => setActiveTab('design')}
+            className={`px-4 py-2 font-semibold transition ${activeTab === 'design' ? 'text-orange-500 border-b-2 border-orange-500' : 'text-gray-400 hover:text-white'}`}
+            data-testid="tab-design"
+          >
+            <Palette className="h-5 w-5 inline mr-2" />
+            Design
+          </button>
         </div>
 
         {/* Content */}
@@ -130,10 +145,12 @@ const Admin = () => {
             {activeTab === 'anime' && <AnimeTab animeList={animeList} reload={loadData} />}
             {activeTab === 'upload' && <UploadTab />}
             {activeTab === 'admins' && user.role === 'super_admin' && <AdminsTab />}
+            {activeTab === 'design' && <DesignTab />}
           </>
         )}
       </div>
     </div>
+    </PageWrapper>
   );
 };
 
@@ -541,6 +558,324 @@ const AdminsTab = () => {
           <button type="submit" className="px-6 py-2 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg hover:from-orange-600 hover:to-red-600" data-testid="admin-submit-button">Create Admin</button>
         </form>
       )}
+    </div>
+  );
+};
+
+const DesignTab = () => {
+  const { settings, loadSettings, getImageUrl } = useSiteSettings();
+  const [formData, setFormData] = useState({
+    site_name: '',
+    site_tagline: '',
+    primary_color: '#f97316',
+    secondary_color: '#ef4444',
+    footer_text: '',
+    announcement_banner: '',
+    announcement_banner_enabled: false,
+    social_links: { twitter: '', discord: '', instagram: '', facebook: '' }
+  });
+  const [saving, setSaving] = useState(false);
+  const [uploadingPage, setUploadingPage] = useState(null);
+
+  useEffect(() => {
+    if (settings) {
+      setFormData({
+        site_name: settings.site_name || 'AnimeStream',
+        site_tagline: settings.site_tagline || '',
+        primary_color: settings.primary_color || '#f97316',
+        secondary_color: settings.secondary_color || '#ef4444',
+        footer_text: settings.footer_text || '',
+        announcement_banner: settings.announcement_banner || '',
+        announcement_banner_enabled: settings.announcement_banner_enabled || false,
+        social_links: settings.social_links || { twitter: '', discord: '', instagram: '', facebook: '' }
+      });
+    }
+  }, [settings]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateSiteSettings(formData);
+      await loadSettings();
+      alert('Settings saved successfully!');
+    } catch (error) {
+      alert('Failed to save: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleBgImageUpload = async (page, file) => {
+    if (!file) return;
+    setUploadingPage(page);
+    try {
+      await uploadBgImage(page, file);
+      await loadSettings();
+      alert(`Background image uploaded for ${page}!`);
+    } catch (error) {
+      alert('Upload failed: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setUploadingPage(null);
+    }
+  };
+
+  const handleLogoUpload = async (file) => {
+    if (!file) return;
+    setUploadingPage('logo');
+    try {
+      await uploadLogo(file);
+      await loadSettings();
+      alert('Logo uploaded!');
+    } catch (error) {
+      alert('Upload failed: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setUploadingPage(null);
+    }
+  };
+
+  const handleRemoveBg = async (page) => {
+    if (!window.confirm(`Remove background image for ${page}?`)) return;
+    try {
+      await removeBgImage(page);
+      await loadSettings();
+      alert('Background removed!');
+    } catch (error) {
+      alert('Failed: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  const PAGES = [
+    { key: 'home', name: 'Home Page', desc: 'Background for hero section overlay' },
+    { key: 'login', name: 'Login Page', desc: 'Background image for login screen' },
+    { key: 'register', name: 'Register Page', desc: 'Background image for register screen' },
+    { key: 'profile', name: 'Profile Page', desc: 'Background for user profile' },
+    { key: 'search', name: 'Search Page', desc: 'Background for search/browse page' },
+    { key: 'watchlist', name: 'Watchlist Page', desc: 'Background for watchlist page' },
+    { key: 'favorites', name: 'Favorites Page', desc: 'Background for favorites page' },
+    { key: 'pricing', name: 'Pricing Page', desc: 'Background for subscription page' },
+    { key: 'admin', name: 'Admin Dashboard', desc: 'Background for admin panel' }
+  ];
+
+  return (
+    <div className="space-y-8">
+      {/* General Settings */}
+      <div className="bg-gray-800/50 backdrop-blur rounded-lg p-6">
+        <h3 className="text-xl font-bold mb-4 flex items-center space-x-2">
+          <Palette className="h-6 w-6 text-orange-500" />
+          <span>General Settings</span>
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Site Name</label>
+            <input
+              type="text"
+              value={formData.site_name}
+              onChange={(e) => setFormData({...formData, site_name: e.target.value})}
+              className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              data-testid="design-site-name"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">Tagline</label>
+            <input
+              type="text"
+              value={formData.site_tagline}
+              onChange={(e) => setFormData({...formData, site_tagline: e.target.value})}
+              className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              data-testid="design-tagline"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">Primary Color</label>
+            <div className="flex space-x-2">
+              <input
+                type="color"
+                value={formData.primary_color}
+                onChange={(e) => setFormData({...formData, primary_color: e.target.value})}
+                className="h-10 w-20 bg-gray-900 border border-gray-700 rounded-lg cursor-pointer"
+                data-testid="design-primary-color"
+              />
+              <input
+                type="text"
+                value={formData.primary_color}
+                onChange={(e) => setFormData({...formData, primary_color: e.target.value})}
+                className="flex-1 px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">Secondary Color</label>
+            <div className="flex space-x-2">
+              <input
+                type="color"
+                value={formData.secondary_color}
+                onChange={(e) => setFormData({...formData, secondary_color: e.target.value})}
+                className="h-10 w-20 bg-gray-900 border border-gray-700 rounded-lg cursor-pointer"
+                data-testid="design-secondary-color"
+              />
+              <input
+                type="text"
+                value={formData.secondary_color}
+                onChange={(e) => setFormData({...formData, secondary_color: e.target.value})}
+                className="flex-1 px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Logo Upload */}
+      <div className="bg-gray-800/50 backdrop-blur rounded-lg p-6">
+        <h3 className="text-xl font-bold mb-4 flex items-center space-x-2">
+          <ImageIcon className="h-6 w-6 text-orange-500" />
+          <span>Site Logo</span>
+        </h3>
+        <div className="flex items-center space-x-6">
+          <div className="flex-shrink-0">
+            {settings?.logo_url ? (
+              <img src={getImageUrl(settings.logo_url)} alt="Logo" className="h-20 w-20 object-contain bg-gray-900 rounded-lg p-2" />
+            ) : (
+              <div className="h-20 w-20 bg-gray-900 rounded-lg flex items-center justify-center text-gray-500">
+                No Logo
+              </div>
+            )}
+          </div>
+          <div className="flex-1">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleLogoUpload(e.target.files[0])}
+              className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg"
+              data-testid="logo-upload-input"
+            />
+            <p className="text-sm text-gray-400 mt-1">Upload PNG/JPG (recommended 200x200)</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Background Images */}
+      <div className="bg-gray-800/50 backdrop-blur rounded-lg p-6">
+        <h3 className="text-xl font-bold mb-4 flex items-center space-x-2">
+          <ImageIcon className="h-6 w-6 text-orange-500" />
+          <span>Page Background Images</span>
+        </h3>
+        <p className="text-sm text-gray-400 mb-4">Upload background images for each page. They will be displayed behind the content with overlay.</p>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {PAGES.map((page) => (
+            <div key={page.key} className="bg-gray-900/50 rounded-lg p-4">
+              <div className="aspect-video bg-gray-800 rounded-lg mb-3 overflow-hidden relative">
+                {settings?.background_images?.[page.key] ? (
+                  <>
+                    <img
+                      src={getImageUrl(settings.background_images[page.key])}
+                      alt={page.name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => { e.target.style.display = 'none'; }}
+                    />
+                    <button
+                      onClick={() => handleRemoveBg(page.key)}
+                      className="absolute top-2 right-2 p-1 bg-red-500 rounded hover:bg-red-600"
+                      data-testid={`remove-bg-${page.key}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </>
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-gray-600">
+                    <ImageIcon className="h-12 w-12" />
+                  </div>
+                )}
+              </div>
+              <h4 className="font-semibold mb-1">{page.name}</h4>
+              <p className="text-xs text-gray-400 mb-3">{page.desc}</p>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleBgImageUpload(page.key, e.target.files[0])}
+                disabled={uploadingPage === page.key}
+                className="w-full text-sm"
+                data-testid={`bg-upload-${page.key}`}
+              />
+              {uploadingPage === page.key && (
+                <p className="text-sm text-orange-500 mt-1">Uploading...</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Announcement Banner */}
+      <div className="bg-gray-800/50 backdrop-blur rounded-lg p-6">
+        <h3 className="text-xl font-bold mb-4">Announcement Banner</h3>
+        <div className="space-y-4">
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="banner-enabled"
+              checked={formData.announcement_banner_enabled}
+              onChange={(e) => setFormData({...formData, announcement_banner_enabled: e.target.checked})}
+              className="h-5 w-5"
+              data-testid="banner-enabled"
+            />
+            <label htmlFor="banner-enabled">Show announcement banner</label>
+          </div>
+          <input
+            type="text"
+            value={formData.announcement_banner}
+            onChange={(e) => setFormData({...formData, announcement_banner: e.target.value})}
+            placeholder="Enter announcement text..."
+            className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+            data-testid="announcement-text"
+          />
+        </div>
+      </div>
+
+      {/* Social Links */}
+      <div className="bg-gray-800/50 backdrop-blur rounded-lg p-6">
+        <h3 className="text-xl font-bold mb-4">Social Media Links</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {['twitter', 'discord', 'instagram', 'facebook'].map((platform) => (
+            <div key={platform}>
+              <label className="block text-sm font-medium mb-2 capitalize">{platform}</label>
+              <input
+                type="url"
+                value={formData.social_links[platform] || ''}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  social_links: { ...formData.social_links, [platform]: e.target.value }
+                })}
+                placeholder={`https://${platform}.com/yourpage`}
+                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Footer Text */}
+      <div className="bg-gray-800/50 backdrop-blur rounded-lg p-6">
+        <h3 className="text-xl font-bold mb-4">Footer Text</h3>
+        <input
+          type="text"
+          value={formData.footer_text}
+          onChange={(e) => setFormData({...formData, footer_text: e.target.value})}
+          className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+          data-testid="footer-text"
+        />
+      </div>
+
+      {/* Save Button */}
+      <div className="flex justify-end sticky bottom-4">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-8 py-3 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg font-semibold hover:from-orange-600 hover:to-red-600 disabled:opacity-50 shadow-2xl"
+          data-testid="save-design-button"
+        >
+          {saving ? 'Saving...' : 'Save All Changes'}
+        </button>
+      </div>
     </div>
   );
 };

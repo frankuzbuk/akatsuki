@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useSiteSettings } from '../context/SiteSettingsContext';
 import { Mail, Lock, AlertCircle } from 'lucide-react';
 
 const Login = () => {
@@ -9,7 +10,9 @@ const Login = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login, googleLogin } = useAuth();
+  const { settings, getBgImage } = useSiteSettings();
   const navigate = useNavigate();
+  const bgImage = getBgImage('login');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -28,12 +31,23 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-black px-4">
-      <div className="max-w-md w-full">
+    <div
+      className="min-h-screen flex items-center justify-center px-4 relative"
+      style={bgImage ? {
+        backgroundImage: `url(${bgImage})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed'
+      } : {
+        background: 'linear-gradient(to bottom right, #111827, #1f2937, #000000)'
+      }}
+    >
+      {bgImage && <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />}
+      <div className="max-w-md w-full relative z-10">
         {/* Logo */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
-            AnimeStream
+            {settings?.site_name || 'AnimeStream'}
           </h1>
           <p className="text-gray-400 mt-2">Welcome back! Please login to your account</p>
         </div>

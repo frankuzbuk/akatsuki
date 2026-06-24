@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { SiteSettingsProvider } from './context/SiteSettingsContext';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -53,7 +54,9 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRouter />
+        <SiteSettingsProvider>
+          <AppRouter />
+        </SiteSettingsProvider>
       </AuthProvider>
     </BrowserRouter>
   );

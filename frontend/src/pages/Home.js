@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getTrendingAnime, getLatestAnime } from '../lib/api';
 import { Play, Star, ChevronLeft, ChevronRight, TrendingUp, Clock } from 'lucide-react';
+import PageWrapper from '../components/PageWrapper';
 
 const HERO_IMAGES = [
   'https://images.unsplash.com/photo-1581436670376-f152b9e3b5ec?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MTN8MHwxfHNlYXJjaHw0fHxhbmltZSUyMGNpbmVtYXRpY3xlbnwwfHx8fDE3ODIyNDIzNDR8MA&ixlib=rb-4.1.0&q=85',
@@ -52,6 +53,7 @@ const Home = () => {
   };
 
   return (
+    <PageWrapper pageName="home" overlayOpacity={0.6}>
     <div className="min-h-screen">
       {/* Hero Slider */}
       <div className="relative h-[70vh] overflow-hidden" data-testid="hero-slider">
@@ -188,6 +190,7 @@ const Home = () => {
         </section>
       </div>
     </div>
+    </PageWrapper>
   );
 };
 

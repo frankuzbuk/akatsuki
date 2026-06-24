@@ -1223,6 +1223,169 @@ async def get_watch_history(request: Request):
     return history
 
 # ============== ADMIN ENDPOINTS ==============
+# ============== SITE SETTINGS ENDPOINTS ==============
+@api_router.get("/settings")
+async def get_site_settings():
+    """Get public site settings (no auth required)"""
+    settings = await db.site_settings.find_one({"id": "main"}, {"_id": 0})
+    
+    if not settings:
+        # Default settings
+        default_settings = {
+            "id": "main",
+            "site_name": "AnimeStream",
+            "site_tagline": "Watch Unlimited Anime",
+            "logo_url": None,
+            "favicon_url": None,
+            "primary_color": "#f97316",
+            "secondary_color": "#ef4444",
+            "hero_images": [],
+            "background_images": {
+                "home": None,
+                "login": None,
+                "register": None,
+                "profile": None,
+                "search": None,
+                "watchlist": None,
+                "favorites": None,
+                "pricing": None,
+                "admin": None
+            },
+            "footer_text": "© 2026 AnimeStream. All rights reserved.",
+            "social_links": {
+                "twitter": "",
+                "discord": "",
+                "instagram": "",
+                "facebook": ""
+            },
+            "announcement_banner": "",
+            "announcement_banner_enabled": False,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.site_settings.insert_one(default_settings)
+        default_settings.pop("_id", None)
+        return default_settings
+    
+    return settings
+
+@api_router.put("/admin/settings", dependencies=[Depends(get_current_admin)])
+async def update_site_settings(data: Dict[str, Any], request: Request):
+    """Update site settings (admin only)"""
+    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    
+    await db.site_settings.update_one(
+        {"id": "main"},
+        {"$set": data},
+        upsert=True
+    )
+    
+    settings = await db.site_settings.find_one({"id": "main"}, {"_id": 0})
+    return settings
+
+@api_router.post("/admin/settings/upload-bg-image", dependencies=[Depends(get_current_admin)])
+async def upload_bg_image(page: str = Query(...), file: UploadFile = File(...)):
+    """Upload background image for a page (admin only)"""
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    
+    ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    r2_key = f"backgrounds/{page}_{uuid.uuid4().hex[:8]}.{ext}"
+    
+    data = await file.read()
+    
+    # Upload to R2
+    if r2_client:
+        try:
+            r2_client.put_object(
+                Bucket=R2_BUCKET_NAME,
+                Key=r2_key,
+                Body=data,
+                ContentType=file.content_type
+            )
+            image_url = f"/api/r2/{r2_key}"
+        except Exception as e:
+            logger.error(f"R2 upload failed: {e}")
+            # Fallback to Emergent
+            path = f"{APP_NAME}/backgrounds/{page}_{uuid.uuid4().hex[:8]}.{ext}"
+            result = put_object(path, data, file.content_type)
+            image_url = f"/api/files/{result['path']}"
+    else:
+        path = f"{APP_NAME}/backgrounds/{page}_{uuid.uuid4().hex[:8]}.{ext}"
+        result = put_object(path, data, file.content_type)
+        image_url = f"/api/files/{result['path']}"
+    
+    # Update settings
+    await db.site_settings.update_one(
+        {"id": "main"},
+        {
+            "$set": {
+                f"background_images.{page}": image_url,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        },
+        upsert=True
+    )
+    
+    return {"message": "Background image uploaded", "image_url": image_url, "page": page}
+
+@api_router.post("/admin/settings/upload-logo", dependencies=[Depends(get_current_admin)])
+async def upload_logo(file: UploadFile = File(...)):
+    """Upload site logo (admin only)"""
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    
+    ext = file.filename.split(".")[-1] if "." in file.filename else "png"
+    r2_key = f"logos/logo_{uuid.uuid4().hex[:8]}.{ext}"
+    
+    data = await file.read()
+    
+    if r2_client:
+        try:
+            r2_client.put_object(
+                Bucket=R2_BUCKET_NAME,
+                Key=r2_key,
+                Body=data,
+                ContentType=file.content_type
+            )
+            logo_url = f"/api/r2/{r2_key}"
+        except Exception as e:
+            logger.error(f"R2 upload failed: {e}")
+            path = f"{APP_NAME}/logos/logo_{uuid.uuid4().hex[:8]}.{ext}"
+            result = put_object(path, data, file.content_type)
+            logo_url = f"/api/files/{result['path']}"
+    else:
+        path = f"{APP_NAME}/logos/logo_{uuid.uuid4().hex[:8]}.{ext}"
+        result = put_object(path, data, file.content_type)
+        logo_url = f"/api/files/{result['path']}"
+    
+    await db.site_settings.update_one(
+        {"id": "main"},
+        {
+            "$set": {
+                "logo_url": logo_url,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        },
+        upsert=True
+    )
+    
+    return {"message": "Logo uploaded", "logo_url": logo_url}
+
+@api_router.delete("/admin/settings/bg-image/{page}", dependencies=[Depends(get_current_admin)])
+async def delete_bg_image(page: str):
+    """Remove background image for a page (admin only)"""
+    await db.site_settings.update_one(
+        {"id": "main"},
+        {
+            "$set": {
+                f"background_images.{page}": None,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        }
+    )
+    return {"message": "Background image removed"}
+
+
 @api_router.post("/admin/create", dependencies=[Depends(get_current_admin)])
 async def create_admin(admin_data: AdminCreate, request: Request):
     """Create new admin (super_admin only)"""

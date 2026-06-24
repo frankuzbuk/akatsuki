@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getFavorites } from '../lib/api';
 import { Star, Heart } from 'lucide-react';
+import PageWrapper from '../components/PageWrapper';
 
 const Favorites = () => {
   const { user, loading: authLoading } = useAuth();
@@ -40,6 +41,7 @@ const Favorites = () => {
   const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1668293750324-bd77c1f08ca9';
 
   return (
+    <PageWrapper pageName="favorites">
     <div className="min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-3xl font-bold mb-8 flex items-center space-x-2">
@@ -74,6 +76,7 @@ const Favorites = () => {
         )}
       </div>
     </div>
+    </PageWrapper>
   );
 };
 

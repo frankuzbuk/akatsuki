@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { createCheckout, getPaymentStatus } from '../lib/api';
 import { Check, Zap, Crown, Loader } from 'lucide-react';
+import PageWrapper from '../components/PageWrapper';
 
 const PACKAGES = [
   {
@@ -96,6 +97,7 @@ const Pricing = () => {
   }
 
   return (
+    <PageWrapper pageName="pricing">
     <div className="min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="text-center mb-16">
@@ -141,6 +143,7 @@ const Pricing = () => {
         </div>
       </div>
     </div>
+    </PageWrapper>
   );
 };
 
